@@ -1,58 +1,45 @@
-# ==========================
 # Node.js
-# ==========================
-
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# ==========================
 # Next.js
-# ==========================
-
 .next/
 out/
 
-# ==========================
-# Variables de entorno
-# ==========================
-
+# Env
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 
-# ==========================
 # Logs
-# ==========================
-
 logs/
 *.log
 
-# ==========================
 # VS Code
-# ==========================
-
 .vscode/
 
-# ==========================
 # macOS
-# ==========================
-
 .DS_Store
 
-# ==========================
-# Archivos temporales
-# ==========================
-
+# Temp
 *.tmp
 *.swp
 
-# ==========================
 # Python
-# ==========================
-
 __pycache__/
 *.pyc
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform.lock.hcl
