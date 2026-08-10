@@ -21,38 +21,34 @@ export default async function HomePage() {
     >
       {!user ? (
         <>
-          <h1>🚀 ECS CI/CD Pipeline Test</h1>
+          <h1>🚀 Payload CMS v2.0</h1>
+
+          <h2>CI/CD Pipeline funcionando correctamente</h2>
+
           <p>
-            Si estás viendo esta página significa que el despliegue desde
-            GitHub Actions hacia Amazon ECS ha funcionado correctamente.
+            Esta versión ha sido desplegada automáticamente mediante GitHub
+            Actions.
+          </p>
+
+          <p>
+            <strong>Versión:</strong> 2.0
+          </p>
+
+          <p>
+            <strong>Fecha:</strong> 10/08/2026
           </p>
         </>
       ) : (
         <>
-          <h1>🚀 Bienvenido {user.email}</h1>
-          <p>La nueva versión de la aplicación ya está desplegada.</p>
+          <h1>👋 Bienvenido {user.email}</h1>
+
+          <p>La versión 2.0 se encuentra desplegada correctamente.</p>
         </>
       )}
 
       <hr />
 
-      <h2>Enlaces</h2>
-
-      <p>
-        <a href="/admin">Ir al panel de administración</a>
-      </p>
-
-      <p>
-        <a href="https://payloadcms.com/docs" target="_blank">
-          Documentación de Payload CMS
-        </a>
-      </p>
-
-      <hr />
-
-      <p>
-        Proyecto desplegado mediante:
-      </p>
+      <h2>Infraestructura</h2>
 
       <ul
         style={{
@@ -60,7 +56,9 @@ export default async function HomePage() {
           textAlign: 'left',
         }}
       >
-        <li>✅ GitHub Actions</li>
+        <li>✅ GitHub (simulando Bitbucket)</li>
+        <li>✅ GitHub Actions (simulando Bitbucket Pipelines)</li>
+        <li>✅ Payload CMS</li>
         <li>✅ Docker</li>
         <li>✅ Amazon ECR</li>
         <li>✅ Amazon ECS Fargate</li>
@@ -68,6 +66,22 @@ export default async function HomePage() {
         <li>✅ MongoDB Atlas</li>
         <li>✅ Terraform</li>
       </ul>
+
+      <hr />
+
+      <p>
+        <a href="/admin">Panel de administración</a>
+      </p>
+
+      <p>
+        <a
+          href="https://payloadcms.com/docs"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Documentación de Payload CMS
+        </a>
+      </p>
     </main>
   )
 }
