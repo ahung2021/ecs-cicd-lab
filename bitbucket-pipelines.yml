@@ -1,0 +1,109 @@
+image: atlassian/default-image:4
+
+definitions:
+  services:
+    docker:
+      memory: 2048
+
+pipelines:
+
+  branches:
+
+    feature/payload-cms:
+
+      - step:
+          name: Build and Push to ECR
+          deployment: dev-build
+          services:
+            - docker
+
+          script:
+
+            # AWS CLI
+            - curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip
+            - unzip -q awscliv2.zip
+            - ./aws/install
+
+            # AWS credentials
+            - aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
+            - aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"
+            - aws configure set default.region "$AWS_DEFAULT_REGION"
+
+            # Verify AWS identity
+            - aws sts get-caller-identity
+
+            # Login to ECR
+            - aws ecr get-login-password --region "$AWS_DEFAULT_REGION" | docker login --username AWS --password-stdin "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com"
+
+            # Build image
+            - export IMAGE_TAG="$BITBUCKET_COMMIT"
+            - export ECR_IMAGE="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/ecs-cicd-lab:$IMAGE_TAG"
+
+            - docker build ./payload-mongo -t "$ECR_IMAGE"
+
+            # Push image
+            - docker push "$ECR_IMAGE"
+
+            # Show image
+            - echo "Image pushed:"
+            - echo "$ECR_IMAGE"
+
+      - step:
+          name: Deploy to ECS
+          deployment: dev-deploy
+
+          script:
+
+            # AWS CLI
+            - curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip
+            - unzip -q awscliv2.zip
+            - ./aws/install
+
+            # AWS credentials
+            - aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
+            - aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"
+            - aws configure set default.region "$AWS_DEFAULT_REGION"
+
+            # Verify AWS identity
+            - aws sts get-caller-identity
+
+            # Variables
+            - export IMAGE_TAG="$BITBUCKET_COMMIT"
+            - export ECR_IMAGE="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/ecs-cicd-lab:$IMAGE_TAG"
+
+            # Get current task definition
+            - aws ecs describe-task-definition --task-definition ecs-cicd-lab --region "$AWS_DEFAULT_REGION" --query taskDefinition > task-definition.json
+
+            # Remove AWS generated fields
+            - jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' task-definition.json > clean-task-definition.json
+
+            # Update image
+            - jq --arg IMAGE "$ECR_IMAGE" '.containerDefinitions |= map(if .name == "ecs-cicd-lab" then .image = $IMAGE else . end)' clean-task-definition.json > new-task-definition.json
+
+            # Register new task definition
+            - aws ecs register-task-definition \
+                --cli-input-json file://new-task-definition.json \
+                --region "$AWS_DEFAULT_REGION" \
+                --query 'taskDefinition.taskDefinitionArn' \
+                --output text
+
+            # Get latest revision
+            - export TASK_DEFINITION_ARN=$(aws ecs describe-task-definition --task-definition ecs-cicd-lab --region "$AWS_DEFAULT_REGION" --query 'taskDefinition.taskDefinitionArn' --output text)
+
+            - echo "New task definition:"
+            - echo "$TASK_DEFINITION_ARN"
+
+            # Update ECS service
+            - aws ecs update-service \
+                --cluster ecs-lab \
+                --service ecs-cicd-lab-service \
+                --task-definition "$TASK_DEFINITION_ARN" \
+                --region "$AWS_DEFAULT_REGION"
+
+            # Wait for deployment
+            - aws ecs wait services-stable \
+                --cluster ecs-lab \
+                --services ecs-cicd-lab-service \
+                --region "$AWS_DEFAULT_REGION"
+
+            - echo "ECS deployment completed successfully"
