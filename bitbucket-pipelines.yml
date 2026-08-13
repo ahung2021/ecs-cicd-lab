@@ -14,13 +14,17 @@ pipelines:
             - test -n "$BITBUCKET_STEP_OIDC_TOKEN"
             - echo "OIDC token received"
 
-            - echo "===== CONFIGURE WEB IDENTITY ====="
-            - export AWS_ROLE_ARN="arn:aws:iam::638501454103:role/BitbucketEcsCicdLabs"
-            - export AWS_WEB_IDENTITY_TOKEN_FILE="$(pwd)/web-identity-token"
+            - echo "===== CLEAR STATIC AWS CREDENTIALS ====="
+            - unset AWS_ACCESS_KEY_ID
+            - unset AWS_SECRET_ACCESS_KEY
+            - unset AWS_SESSION_TOKEN
 
+            - echo "===== CONFIGURE AWS WEB IDENTITY ====="
+            - export AWS_ROLE_ARN="arn:aws:iam::638501454103:role/BitbucketEcsCicdLabs"
+            - export AWS_WEB_IDENTITY_TOKEN_FILE="$BITBUCKET_CLONE_DIR/web-identity-token"
             - printf '%s' "$BITBUCKET_STEP_OIDC_TOKEN" > "$AWS_WEB_IDENTITY_TOKEN_FILE"
 
             - echo "===== AWS IDENTITY ====="
-            - aws sts get-caller-identity
+            - aws sts get-caller-identity --no-cli-pager
 
             - echo "===== OIDC SUCCESS ====="
