@@ -6,27 +6,17 @@ pipelines:
       - step:
           name: Test Bitbucket OIDC with AWS
           oidc: true
-
           script:
             - echo "===== AWS CLI ====="
             - aws --version
-
             - echo "===== OIDC TOKEN ====="
             - test -n "$BITBUCKET_STEP_OIDC_TOKEN"
             - echo "OIDC token received"
-
-            - echo "===== CLEAR STATIC AWS CREDENTIALS ====="
-            - unset AWS_ACCESS_KEY_ID
-            - unset AWS_SECRET_ACCESS_KEY
-            - unset AWS_SESSION_TOKEN
-
+            - unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
             - echo "===== CONFIGURE AWS WEB IDENTITY ====="
-            - export AWS_ROLE_ARN="arn:aws:iam::638501454103:role/BitbucketEcsCicdLabs"
-            - export AWS_WEB_IDENTITY_TOKEN_FILE="$BITBUCKET_CLONE_DIR/web-identity-token"
+            - export AWS_ROLE_ARN=arn:aws:iam::638501454103:role/BitbucketEcsCicdLabs
+            - export AWS_WEB_IDENTITY_TOKEN_FILE=$BITBUCKET_CLONE_DIR/web-identity-token
             - printf '%s' "$BITBUCKET_STEP_OIDC_TOKEN" > "$AWS_WEB_IDENTITY_TOKEN_FILE"
-
             - echo "===== AWS IDENTITY ====="
-            - export AWS_IDENTITY_ARN="$(aws sts get-caller-identity --query Arn --output text)"
-            - echo "AWS Identity: $AWS_IDENTITY_ARN"
-
+            - aws sts get-caller-identity --query Arn --output text
             - echo "===== OIDC SUCCESS ====="
