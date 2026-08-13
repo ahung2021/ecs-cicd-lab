@@ -1,42 +1,13 @@
 image: atlassian/default-image:4
 
-definitions:
-  services:
-    docker:
-      memory: 2048
-
 pipelines:
   branches:
     feature/payload-cms:
 
       - step:
-          name: Test AWS and ECR
-          services:
-            - docker
-
+          name: Check Bitbucket Runner
           script:
-            - curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip
-            - unzip -q awscliv2.zip
-            - ./aws/install
-
-            - aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
-            - aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"
-            - aws configure set default.region "$AWS_DEFAULT_REGION"
-
-            - echo "===== AWS IDENTITY ====="
-            - aws sts get-caller-identity
-
-            - echo "===== ECR LOGIN ====="
-            - aws ecr get-login-password --region "$AWS_DEFAULT_REGION" | docker login --username AWS --password-stdin "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com"
-
-            - echo "===== BUILD ====="
-            - export IMAGE_TAG="$BITBUCKET_COMMIT"
-            - export ECR_IMAGE="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/ecs-cicd-lab:$IMAGE_TAG"
-
-            - docker build ./payload-mongo -t "$ECR_IMAGE"
-
-            - echo "===== PUSH ====="
-            - docker push "$ECR_IMAGE"
-
-            - echo "===== SUCCESS ====="
-            - echo "$ECR_IMAGE"
+            - echo "===== AWS CLI ====="
+            - aws --version
+            - echo "===== JQ ====="
+            - jq --version
