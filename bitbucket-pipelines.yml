@@ -6,6 +6,7 @@ pipelines:
       - step:
           name: Test Bitbucket OIDC with AWS
           oidc: true
+
           script:
             - echo "===== AWS CLI ====="
             - aws --version
@@ -25,6 +26,7 @@ pipelines:
             - printf '%s' "$BITBUCKET_STEP_OIDC_TOKEN" > "$AWS_WEB_IDENTITY_TOKEN_FILE"
 
             - echo "===== AWS IDENTITY ====="
-            - aws sts get-caller-identity --no-cli-pager
+            - export AWS_IDENTITY_ARN="$(aws sts get-caller-identity --query Arn --output text)"
+            - echo "AWS Identity: $AWS_IDENTITY_ARN"
 
             - echo "===== OIDC SUCCESS ====="
