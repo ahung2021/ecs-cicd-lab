@@ -16,101 +16,52 @@ pipelines:
             - docker
 
           script:
-            # Install AWS CLI
             - curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip
             - unzip -q awscliv2.zip
             - ./aws/install
 
-            # Configure AWS
             - aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
             - aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"
             - aws configure set default.region "$AWS_DEFAULT_REGION"
 
-            # Verify AWS identity
             - echo "===== AWS IDENTITY ====="
             - aws sts get-caller-identity
 
-            # Variables
             - export IMAGE_TAG="$BITBUCKET_COMMIT"
             - export ECR_REGISTRY="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com"
             - export ECR_IMAGE="$ECR_REGISTRY/ecs-cicd-lab:$IMAGE_TAG"
 
-            # Login to ECR
             - echo "===== ECR LOGIN ====="
             - aws ecr get-login-password --region "$AWS_DEFAULT_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
 
-            # Build image
             - echo "===== DOCKER BUILD ====="
             - docker build ./payload-mongo -t "$ECR_IMAGE"
 
-            # Push image
             - echo "===== ECR PUSH ====="
             - docker push "$ECR_IMAGE"
 
-            # Show current ECS task
             - echo "===== CURRENT ECS TASK ====="
-            - aws ecs describe-task-definition \
-                --task-definition ecs-cicd-lab \
-                --region "$AWS_DEFAULT_REGION" \
-                --query 'taskDefinition.[family,revision,containerDefinitions[0].image]' \
-                --output table
+            - aws ecs describe-task-definition --task-definition ecs-cicd-lab --region "$AWS_DEFAULT_REGION" --query 'taskDefinition.[family,revision,containerDefinitions[0].image]' --output table
 
-            # Download current task definition
             - echo "===== DOWNLOAD TASK DEFINITION ====="
-            - aws ecs describe-task-definition \
-                --task-definition ecs-cicd-lab \
-                --region "$AWS_DEFAULT_REGION" \
-                --query taskDefinition \
-                --output json > task-definition.json
+            - aws ecs describe-task-definition --task-definition ecs-cicd-lab --region "$AWS_DEFAULT_REGION" --query taskDefinition --output json > task-definition.json
 
-            # Remove AWS generated fields
             - echo "===== CLEAN TASK DEFINITION ====="
-            - jq 'del(
-                .taskDefinitionArn,
-                .revision,
-                .status,
-                .requiresAttributes,
-                .compatibilities,
-                .registeredAt,
-                .registeredBy
-              )' task-definition.json > clean-task-definition.json
+            - jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' task-definition.json > clean-task-definition.json
 
-            # Replace container image
             - echo "===== UPDATE IMAGE ====="
-            - jq --arg IMAGE "$ECR_IMAGE" '
-                .containerDefinitions |=
-                map(
-                  if .name == "ecs-cicd-lab"
-                  then .image = $IMAGE
-                  else .
-                  end
-                )
-              ' clean-task-definition.json > new-task-definition.json
+            - jq --arg IMAGE "$ECR_IMAGE" '.containerDefinitions |= map(if .name == "ecs-cicd-lab" then .image = $IMAGE else . end)' clean-task-definition.json > new-task-definition.json
 
-            # Register new task definition
             - echo "===== REGISTER TASK DEFINITION ====="
-            - export NEW_TASK_DEFINITION=$(aws ecs register-task-definition \
-                --cli-input-json file://new-task-definition.json \
-                --region "$AWS_DEFAULT_REGION" \
-                --query 'taskDefinition.taskDefinitionArn' \
-                --output text)
+            - export NEW_TASK_DEFINITION=$(aws ecs register-task-definition --cli-input-json file://new-task-definition.json --region "$AWS_DEFAULT_REGION" --query 'taskDefinition.taskDefinitionArn' --output text)
 
             - echo "New task definition: $NEW_TASK_DEFINITION"
 
-            # Update ECS service
             - echo "===== UPDATE ECS SERVICE ====="
-            - aws ecs update-service \
-                --cluster ecs-lab \
-                --service ecs-cicd-lab-service \
-                --task-definition "$NEW_TASK_DEFINITION" \
-                --region "$AWS_DEFAULT_REGION"
+            - aws ecs update-service --cluster ecs-lab --service ecs-cicd-lab-service --task-definition "$NEW_TASK_DEFINITION" --region "$AWS_DEFAULT_REGION"
 
-            # Wait for deployment
             - echo "===== WAIT FOR ECS STABILITY ====="
-            - aws ecs wait services-stable \
-                --cluster ecs-lab \
-                --services ecs-cicd-lab-service \
-                --region "$AWS_DEFAULT_REGION"
+            - aws ecs wait services-stable --cluster ecs-lab --services ecs-cicd-lab-service --region "$AWS_DEFAULT_REGION"
 
             - echo "===== DEPLOYMENT SUCCESSFUL ====="
             - echo "Image: $ECR_IMAGE"
