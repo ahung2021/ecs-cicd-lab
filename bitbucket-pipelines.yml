@@ -12,7 +12,6 @@ pipelines:
       # ============================================================
       - step:
           name: Build and Push Image to ECR
-          deployment: dev-build
           image: atlassian/default-image:4
           oidc: true
 
@@ -71,7 +70,6 @@ pipelines:
       # ============================================================
       - step:
           name: Deploy to ECS Fargate
-          deployment: dev-deploy
           image: amazon/aws-cli:2.36.10
           oidc: true
 
