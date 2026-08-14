@@ -20,8 +20,12 @@ pipelines:
 
           script:
             - echo "===== AWS CLI ====="
-            - apt-get update
-            - apt-get install -y awscli
+            - export DEBIAN_FRONTEND=noninteractive
+            - |
+              if ! command -v aws >/dev/null 2>&1; then
+                apt-get update
+                apt-get install -y --no-install-recommends awscli
+              fi
             - aws --version
             - docker --version
 
