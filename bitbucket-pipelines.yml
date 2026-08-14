@@ -1,5 +1,3 @@
-image: atlassian/default-image:4
-
 definitions:
   services:
     docker:
@@ -9,22 +7,47 @@ pipelines:
   branches:
     feature/payload-cms:
 
+      # ============================================================
+      # STEP 1 - BUILD AND PUSH IMAGE TO ECR
+      # ============================================================
       - step:
           name: Build and Push Image to ECR
+          deployment: dev-build
+          image: atlassian/default-image:4
           oidc: true
+
           services:
             - docker
+
           script:
+            - echo "===== AWS CLI ====="
+            - apt-get update
+            - apt-get install -y awscli
+            - aws --version
+            - docker --version
+
             - echo "===== AWS OIDC ====="
             - test -n "$BITBUCKET_STEP_OIDC_TOKEN"
-            - unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
-            - export AWS_ROLE_ARN=arn:aws:iam::638501454103:role/BitbucketEcsCicdLabs
-            - export AWS_WEB_IDENTITY_TOKEN_FILE=$BITBUCKET_CLONE_DIR/web-identity-token
-            - printf '%s' "$BITBUCKET_STEP_OIDC_TOKEN" > "$AWS_WEB_IDENTITY_TOKEN_FILE"
-            - aws sts get-caller-identity --query Arn --output text
 
-            - export IMAGE_TAG="$BITBUCKET_COMMIT"
+            - echo "===== CLEAR STATIC CREDENTIALS ====="
+            - unset AWS_ACCESS_KEY_ID
+            - unset AWS_SECRET_ACCESS_KEY
+            - unset AWS_SESSION_TOKEN
+
+            - echo "===== CONFIGURE AWS WEB IDENTITY ====="
+            - export AWS_ROLE_ARN="arn:aws:iam::638501454103:role/BitbucketEcsCicdLabs"
+            - export AWS_WEB_IDENTITY_TOKEN_FILE="$BITBUCKET_CLONE_DIR/web-identity-token"
+            - printf '%s' "$BITBUCKET_STEP_OIDC_TOKEN" > "$AWS_WEB_IDENTITY_TOKEN_FILE"
+
+            - echo "===== AWS IDENTITY ====="
+            - aws sts get-caller-identity --query 'Arn' --output text
+
+            - echo "===== VARIABLES ====="
+            - test -n "$AWS_ACCOUNT_ID"
+            - test -n "$AWS_DEFAULT_REGION"
+
             - export ECR_REGISTRY="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com"
+            - export IMAGE_TAG="$BITBUCKET_COMMIT"
             - export ECR_IMAGE="$ECR_REGISTRY/ecs-cicd-lab:$IMAGE_TAG"
 
             - echo "===== ECR LOGIN ====="
@@ -33,48 +56,93 @@ pipelines:
             - echo "===== DOCKER BUILD ====="
             - docker build ./payload-mongo -t "$ECR_IMAGE"
 
+            - echo "===== DOCKER IMAGE ====="
+            - docker images "$ECR_IMAGE"
+
             - echo "===== ECR PUSH ====="
             - docker push "$ECR_IMAGE"
 
-            - echo "===== IMAGE ====="
+            - echo "===== IMAGE PUSHED ====="
             - echo "$ECR_IMAGE"
 
+
+      # ============================================================
+      # STEP 2 - DEPLOY TO ECS FARGATE
+      # ============================================================
       - step:
           name: Deploy to ECS Fargate
+          deployment: dev-deploy
+          image: amazon/aws-cli:2.36.10
           oidc: true
+
           script:
             - echo "===== AWS OIDC ====="
             - test -n "$BITBUCKET_STEP_OIDC_TOKEN"
-            - unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
-            - export AWS_ROLE_ARN=arn:aws:iam::638501454103:role/BitbucketEcsCicdLabs
-            - export AWS_WEB_IDENTITY_TOKEN_FILE=$BITBUCKET_CLONE_DIR/web-identity-token
-            - printf '%s' "$BITBUCKET_STEP_OIDC_TOKEN" > "$AWS_WEB_IDENTITY_TOKEN_FILE"
-            - aws sts get-caller-identity --query Arn --output text
 
+            - echo "===== CLEAR STATIC CREDENTIALS ====="
+            - unset AWS_ACCESS_KEY_ID
+            - unset AWS_SECRET_ACCESS_KEY
+            - unset AWS_SESSION_TOKEN
+
+            - echo "===== CONFIGURE AWS WEB IDENTITY ====="
+            - export AWS_ROLE_ARN="arn:aws:iam::638501454103:role/BitbucketEcsCicdLabs"
+            - export AWS_WEB_IDENTITY_TOKEN_FILE="$BITBUCKET_CLONE_DIR/web-identity-token"
+            - printf '%s' "$BITBUCKET_STEP_OIDC_TOKEN" > "$AWS_WEB_IDENTITY_TOKEN_FILE"
+
+            - echo "===== AWS IDENTITY ====="
+            - aws sts get-caller-identity --query 'Arn' --output text
+
+            - echo "===== VARIABLES ====="
+            - test -n "$AWS_ACCOUNT_ID"
+            - test -n "$AWS_DEFAULT_REGION"
+
+            - export CLUSTER_NAME="ecs-lab"
+            - export SERVICE_NAME="ecs-cicd-lab-service"
+            - export TASK_FAMILY="ecs-cicd-lab"
+            - export CONTAINER_NAME="ecs-cicd-lab"
             - export IMAGE_TAG="$BITBUCKET_COMMIT"
             - export ECR_IMAGE="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/ecs-cicd-lab:$IMAGE_TAG"
 
-            - echo "===== CURRENT ECS TASK ====="
-            - aws ecs describe-task-definition --task-definition ecs-cicd-lab --region "$AWS_DEFAULT_REGION" --query "taskDefinition.[family,revision,containerDefinitions[0].image]" --output table
+            - echo "===== DEPLOYMENT VARIABLES ====="
+            - 'echo "Cluster: $CLUSTER_NAME"'
+            - 'echo "Service: $SERVICE_NAME"'
+            - 'echo "Task family: $TASK_FAMILY"'
+            - 'echo "Container: $CONTAINER_NAME"'
+            - 'echo "Image: $ECR_IMAGE"'
 
-            - echo "===== DOWNLOAD TASK DEFINITION ====="
-            - aws ecs describe-task-definition --task-definition ecs-cicd-lab --region "$AWS_DEFAULT_REGION" --query "taskDefinition" --output json > task-definition.json
+            - echo "===== CURRENT ECS SERVICE ====="
+            - aws ecs describe-services --cluster "$CLUSTER_NAME" --services "$SERVICE_NAME" --region "$AWS_DEFAULT_REGION" --query 'services[0].[serviceName,desiredCount,runningCount,pendingCount,taskDefinition]' --output table
+
+            - echo "===== CURRENT TASK DEFINITION ====="
+            - aws ecs describe-task-definition --task-definition "$TASK_FAMILY" --region "$AWS_DEFAULT_REGION" --query 'taskDefinition.[family,revision,containerDefinitions[0].image]' --output table
+
+            - echo "===== DOWNLOAD CURRENT TASK DEFINITION ====="
+            - aws ecs describe-task-definition --task-definition "$TASK_FAMILY" --region "$AWS_DEFAULT_REGION" --query 'taskDefinition' --output json > task-definition.json
 
             - echo "===== CLEAN TASK DEFINITION ====="
-            - jq "del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)" task-definition.json > clean-task-definition.json
+            - jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' task-definition.json > clean-task-definition.json
 
-            - echo "===== UPDATE IMAGE ====="
-            - jq --arg IMAGE "$ECR_IMAGE" "(.containerDefinitions[] | select(.name == \"ecs-cicd-lab\")).image = \$IMAGE" clean-task-definition.json > new-task-definition.json
+            - echo "===== UPDATE CONTAINER IMAGE ====="
+            - jq --arg IMAGE "$ECR_IMAGE" --arg CONTAINER "$CONTAINER_NAME" '(.containerDefinitions[] | select(.name == $CONTAINER)).image = $IMAGE' clean-task-definition.json > new-task-definition.json
 
-            - echo "===== REGISTER TASK DEFINITION ====="
-            - export NEW_TASK_DEFINITION=$(aws ecs register-task-definition --cli-input-json file://new-task-definition.json --region "$AWS_DEFAULT_REGION" --query "taskDefinition.taskDefinitionArn" --output text)
+            - echo "===== VALIDATE TASK DEFINITION ====="
+            - jq empty new-task-definition.json
 
+            - echo "===== REGISTER NEW TASK DEFINITION ====="
+            - export NEW_TASK_DEFINITION="$(aws ecs register-task-definition --cli-input-json file://new-task-definition.json --region "$AWS_DEFAULT_REGION" --query 'taskDefinition.taskDefinitionArn' --output text)"
+
+            - test -n "$NEW_TASK_DEFINITION"
+
+            - echo "===== NEW TASK DEFINITION ====="
             - 'echo "New task definition: $NEW_TASK_DEFINITION"'
 
             - echo "===== UPDATE ECS SERVICE ====="
-            - aws ecs update-service --cluster ecs-lab --service ecs-cicd-lab-service --task-definition "$NEW_TASK_DEFINITION" --region "$AWS_DEFAULT_REGION"
+            - aws ecs update-service --cluster "$CLUSTER_NAME" --service "$SERVICE_NAME" --task-definition "$NEW_TASK_DEFINITION" --region "$AWS_DEFAULT_REGION" --query 'service.[serviceName,taskDefinition,desiredCount,runningCount]' --output table
 
-            - echo "===== WAIT FOR ECS ====="
-            - aws ecs wait services-stable --cluster ecs-lab --services ecs-cicd-lab-service --region "$AWS_DEFAULT_REGION"
+            - echo "===== WAIT FOR ECS DEPLOYMENT ====="
+            - aws ecs wait services-stable --cluster "$CLUSTER_NAME" --services "$SERVICE_NAME" --region "$AWS_DEFAULT_REGION"
+
+            - echo "===== VERIFY ECS ====="
+            - aws ecs describe-services --cluster "$CLUSTER_NAME" --services "$SERVICE_NAME" --region "$AWS_DEFAULT_REGION" --query 'services[0].[serviceName,desiredCount,runningCount,pendingCount,taskDefinition]' --output table
 
             - echo "===== DEPLOYMENT SUCCESSFUL ====="
